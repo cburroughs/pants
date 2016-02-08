@@ -50,3 +50,9 @@ class PytestRunIntegrationTest(PantsRunIntegrationTest):
                                   'testprojects/tests/python/pants/constants_only:constants_only'])
       self.assert_success(pants_run)
       self.assertTrue(os.path.exists(os.path.join(coverage_dir, 'coverage.xml')))
+
+  def test_pytest_loads_test_resources(self):
+    pants_run = self.run_pants(['clean-all',
+                                'test.pytest',
+                                'testprojects/tests/python/pants/resources:resource_target'])
+    self.assert_success(pants_run)
