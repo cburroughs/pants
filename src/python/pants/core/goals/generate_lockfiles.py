@@ -9,6 +9,10 @@ from collections import defaultdict
 from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Callable, ClassVar, Iterable, Iterator, Mapping, Sequence, Tuple, cast
+from pants.core.util_rules.lockfile_metadata import (
+    LockfileMetadataValidation
+    )
+
 
 from typing_extensions import Protocol
 
@@ -40,6 +44,11 @@ class GenerateLockfileResult:
     path: str
     diff: LockfileDiff | None = None
 
+@dataclass(frozen=True)
+class CheckLockfileResult:
+    resolve_name: str
+    lockfile_dest: str
+    validation: LockfileMetadataValidation
 
 @union(in_scope_types=[EnvironmentName])
 @dataclass(frozen=True)
@@ -70,6 +79,7 @@ class GenerateLockfileWithEnvironments(GenerateLockfile):
 @dataclass(frozen=True)
 class WrappedGenerateLockfile:
     request: GenerateLockfile
+
 
 
 @union(in_scope_types=[EnvironmentName])
@@ -493,6 +503,16 @@ class GenerateLockfilesSubsystem(GoalSubsystem):
             """
         ),
     )
+    check = BoolOption(
+        default=False,
+        help=softwrap(
+            f"""
+            Instead of generating a new lockfile, only check for local
+            consistency.  That is that the lockfiles on disk matches the
+            currently declared requirements.
+            """
+        ),
+    )
 
     @property
     def request_diffs(self) -> bool:
@@ -553,6 +573,35 @@ async def generate_lockfiles_goal(
     )
     if generate_lockfiles_subsystem.request_diffs:
         all_requests = (replace(req, diff=True) for req in all_requests)
+
+    if generate_lockfiles_subsystem.check:
+        check_results = await MultiGet(
+            Get(
+                CheckLockfileResult,
+                {
+                    req: GenerateLockfile,
+                    _preferred_environment(req, local_environment.val): EnvironmentName,
+                },
+            )
+            for req in all_requests
+        )
+        for result in check_results:
+            sigil = console.sigil_succeeded() if result.validation else console.sigil_failed()
+            console.print_stderr(f"{sigil} {result.resolve_name}:{result.lockfile_dest}")
+            if not result.validation:
+                console.print_stderr(
+                    softwrap(
+                        f"""
+                        Last generated lockfile
+                        {result.resolve_name}:{result.lockfile_dest} does not
+                        match currently declared metadata.  Lockfile is out of
+                        date and needs to be re-generated.
+                        """))
+                for failure in result.validation.failure_reasons:
+                    console.print_stderr(failure)
+
+        return GenerateLockfilesGoal(exit_code= 1 if any(not result.validation for result in check_results) else 0)
+
 
     results = await MultiGet(
         Get(

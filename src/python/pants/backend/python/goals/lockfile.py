@@ -19,14 +19,20 @@ from pants.backend.python.util_rules.interpreter_constraints import InterpreterC
 from pants.backend.python.util_rules.lockfile_diff import _generate_python_lockfile_diff
 from pants.backend.python.util_rules.lockfile_metadata import PythonLockfileMetadata
 from pants.backend.python.util_rules.pex_cli import PexCliProcess
+from pants.backend.python.util_rules import pex_environment
 from pants.backend.python.util_rules.pex_requirements import (
+    Resolve,
+    Lockfile,
+    LoadedLockfile,
     PexRequirements,
     ResolvePexConfig,
     ResolvePexConfigRequest,
+    LoadedLockfileRequest
 )
 from pants.core.goals.generate_lockfiles import (
     GenerateLockfile,
     GenerateLockfileResult,
+    CheckLockfileResult,
     GenerateLockfilesSubsystem,
     KnownUserResolveNames,
     KnownUserResolveNamesRequest,
@@ -46,6 +52,7 @@ from pants.util.docutil import bin_name
 from pants.util.logging import LogLevel
 from pants.util.ordered_set import FrozenOrderedSet
 from pants.util.pip_requirement import PipRequirement
+
 
 
 @dataclass(frozen=True)
@@ -97,6 +104,55 @@ async def _setup_pip_args_and_constraints_file(resolve_name: str) -> _PipArgsAnd
     input_digest = await Get(Digest, MergeDigests(digests))
     return _PipArgsAndConstraintsSetup(resolve_config, tuple(args), input_digest)
 
+
+@rule(desc="Checking Python lockfile", level=LogLevel.DEBUG)
+async def check_lockfile(
+        req: GeneratePythonLockfile,
+        generate_lockfiles_subsystem: GenerateLockfilesSubsystem,
+        python_setup: PythonSetup,
+) -> CheckLockfileResult:
+    pip_args_setup = await _setup_pip_args_and_constraints_file(req.resolve_name)
+    # TODO: DRY
+    new_metadata = PythonLockfileMetadata.new(
+        valid_for_interpreter_constraints=req.interpreter_constraints,
+        requirements={
+            PipRequirement.parse(
+                i,
+                description_of_origin=f"the lockfile {req.lockfile_dest} for the resolve {req.resolve_name}",
+            )
+            for i in req.requirements
+        },
+        manylinux=pip_args_setup.resolve_config.manylinux,
+        requirement_constraints=(
+            set(pip_args_setup.resolve_config.constraints_file.constraints)
+            if pip_args_setup.resolve_config.constraints_file
+            else set()
+        ),
+        only_binary=set(pip_args_setup.resolve_config.only_binary),
+        no_binary=set(pip_args_setup.resolve_config.no_binary),
+    )
+
+    last_generated_lockfile = await Get(Lockfile, Resolve(req.resolve_name, use_entire_lockfile=True))
+
+    last_generated_loaded_lockfile = await Get(LoadedLockfile, LoadedLockfileRequest(lockfile=last_generated_lockfile))
+    old_metadata = last_generated_loaded_lockfile.metadata
+
+    validation = new_metadata.is_valid_for(
+        expected_invalidation_digest= None,
+        user_interpreter_constraints= old_metadata.valid_for_interpreter_constraints,
+        interpreter_universe= old_metadata.valid_for_interpreter_constraints,
+        user_requirements=old_metadata.requirements,
+        manylinux= old_metadata.manylinux,
+        requirement_constraints= old_metadata.requirement_constraints,
+        only_binary= old_metadata.only_binary,
+        no_binary= old_metadata.no_binary
+    ) 
+
+    return CheckLockfileResult(resolve_name=req.resolve_name,
+                               lockfile_dest=req.lockfile_dest,
+                               validation=validation)
+
+    
 
 @rule(desc="Generate Python lockfile", level=LogLevel.DEBUG)
 async def generate_lockfile(
