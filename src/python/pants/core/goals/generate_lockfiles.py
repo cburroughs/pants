@@ -81,7 +81,6 @@ class WrappedGenerateLockfile:
     request: GenerateLockfile
 
 
-
 @union(in_scope_types=[EnvironmentName])
 class GenerateToolLockfileSentinel:
     """Tools use this as an entry point to say how to generate their tool lockfile.
@@ -585,6 +584,7 @@ async def generate_lockfiles_goal(
             )
             for req in all_requests
         )
+        
         for result in check_results:
             sigil = console.sigil_succeeded() if result.validation else console.sigil_failed()
             console.print_stderr(f"{sigil} {result.resolve_name}:{result.lockfile_dest}")
