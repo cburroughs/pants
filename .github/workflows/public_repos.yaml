@@ -17,10 +17,10 @@ jobs:
       with:
         fetch-depth: 10
         repository: AlexTereshenkov/cheeseshop-query
-    - name: Set up Python 3.9
+    - name: Set up Python 3.11
       uses: actions/setup-python@v5
       with:
-        python-version: '3.9'
+        python-version: '3.11'
     - name: Pants on
       run: '
 
@@ -154,10 +154,10 @@ jobs:
       with:
         fetch-depth: 10
         repository: OpenSaMD/OpenSaMD
-    - name: Set up Python 3.9.15
+    - name: Set up Python 3.11
       uses: actions/setup-python@v5
       with:
-        python-version: 3.9.15
+        python-version: 3.11
     - name: Pants on
       run: '
 
