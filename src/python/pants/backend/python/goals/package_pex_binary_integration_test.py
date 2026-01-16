@@ -947,7 +947,7 @@ def test_scie_custom_exe_with_env_and_args(rule_runner: PythonRuleRunner) -> Non
                     # Set env vars: GREETING will be used in scie_args
                     scie_env=["GREETING=hello_world"],
                     # Use the venv's Python as the executable
-                    scie_exe=["{scie.env.VIRTUAL_ENV}/bin/python"],
+                    scie_exe="{scie.env.VIRTUAL_ENV}/bin/python",
                     # Pass the script path and the greeting as args
                     scie_args=["{scie.env.MY_SCRIPT}", "--message", "{scie.env.GREETING}"],
                 )
